@@ -48,7 +48,7 @@ version = "1.0"
 
 [dependencies.wgpu]
 git = "https://github.com/gfx-rs/wgpu-rs"
-rev = "3d605463bb1c7c4d4f468ac166916855c4fda6cc"
+rev = "c37947dbb7d555b5dea7c6061bd2d505ca99e549"
 features = ["trace"]
 
 [dependencies.wgpu-subscriber]

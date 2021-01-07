@@ -1,3 +1,5 @@
+use rayon::prelude::*;
+
 /// Voxel Vertex structure
 struct Vertex {
     position: [f32; 3],
@@ -52,6 +54,8 @@ impl Voxel {
 pub struct MarchingCubes {
     /// 3D "tile" size
     pub size: usize,
+    /// 3D "tile" height
+    pub height: usize,
     /// Isolevel value
     pub isolevel: f32,
     /// Low Poly mode
@@ -62,37 +66,64 @@ impl MarchingCubes {
     pub fn new() -> Self {
         Self {
             size: 64,
+            height: 1,
             isolevel: 0.0,
             low_poly: true,
         }
+    }
+
+    pub fn get_density_map<F>(&self, density: F) -> Vec<Vec<Vec<f32>>>
+    where F: Fn(usize, usize, usize) -> f32 + Send + Sync 
+    {
+        (0..self.height + 1).into_par_iter().map(|y|
+            (0..self.size + 1).into_par_iter().map(|x|
+                (0..self.size + 1).into_par_iter().map(|z|
+                    density(x, y, z)
+                ).collect::<Vec<_>>()
+            ).collect::<Vec<_>>()
+        ).collect::<Vec<_>>()
     }
 
     /// Takes density function as a parameter
     /// Returns vector of vertices and optional vector of indices, dependent on `low_poly`
     /// parameter
     pub fn polygonize<F>(&self, density: F) -> (Vec<[f32; 3]>, Option<Vec<u32>>)
-    where F: Fn(usize, usize, usize) -> f32
+    where F: Fn(usize, usize, usize) -> f32 + Send + Sync
     {
-        let mut positions = Vec::with_capacity(300_000);
+        let now = std::time::Instant::now();
+        let density_map = self.get_density_map(density);
+        println!("Density map is ready in {} microsec", now.elapsed().as_micros());
 
-        for x0 in 0..self.size {
+        self.polygonize_map(&density_map)
+    }
+
+    /// Takes density map as a parameter and returns vector of verices just as `polygonize`
+    pub fn polygonize_map(
+        &self,
+        density_map: &[Vec<Vec<f32>>]
+    ) -> (Vec<[f32; 3]>, Option<Vec<u32>>) {
+
+        let positions = (0..self.size).into_par_iter().map(|x0| {
             let x1 = x0 + 1;
-            for z0 in 0..self.size {
+            (0..self.size).into_par_iter().map(|z0| {
                 let z1 = z0 + 1;
-                for y0 in 0..self.size {
+                (0..self.height).into_par_iter().map(|y0| {
+                    let mut positions = Vec::with_capacity(16);
+                    let now = std::time::Instant::now();
                     let y1 = y0 + 1;
                     let voxel = Voxel {
                         vertices: [
-                            Vertex::new([x0, y0, z0], density(x0, y0, z0)),
-                            Vertex::new([x1, y0, z0], density(x1, y0, z0)),
-                            Vertex::new([x1, y1, z0], density(x1, y1, z0)),
-                            Vertex::new([x0, y1, z0], density(x0, y1, z0)),
-                            Vertex::new([x0, y0, z1], density(x0, y0, z1)),
-                            Vertex::new([x1, y0, z1], density(x1, y0, z1)),
-                            Vertex::new([x1, y1, z1], density(x1, y1, z1)),
-                            Vertex::new([x0, y1, z1], density(x0, y1, z1)),
+                            Vertex::new([x0, y0, z0], density_map[y0][x0][z0]),
+                            Vertex::new([x1, y0, z0], density_map[y0][x1][z0]),
+                            Vertex::new([x1, y1, z0], density_map[y1][x1][z0]),
+                            Vertex::new([x0, y1, z0], density_map[y1][x0][z0]),
+                            Vertex::new([x0, y0, z1], density_map[y0][x0][z1]),
+                            Vertex::new([x1, y0, z1], density_map[y0][x1][z1]),
+                            Vertex::new([x1, y1, z1], density_map[y1][x1][z1]),
+                            Vertex::new([x0, y1, z1], density_map[y1][x0][z1]),
                         ]
                     };
+                    let density_duration = now.elapsed().as_micros();
 
                     let mut case_index = 0;
                     let mut vertices = [[0.0, 0.0, 0.0]; 12];
@@ -105,7 +136,7 @@ impl MarchingCubes {
 
                     // Cube is entirely in or out of the surface
                     if CASE_TO_NUMPOLY[case_index] == 0 {
-                        continue;
+                        return positions;
                     }
 
                     // Find intersections witht the voxel
@@ -141,9 +172,10 @@ impl MarchingCubes {
                             }
                         */
                     }
-                }
-            }
-        }
+                    positions
+                }).flatten().collect::<Vec<_>>()
+            }).flatten().collect::<Vec<_>>()
+        }).flatten().collect::<Vec<_>>();
         (positions, None)
     }
 }

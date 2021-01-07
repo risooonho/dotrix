@@ -4,8 +4,11 @@ use dotrix::{
     egui::{
         Egui,
         CollapsingHeader,
-        SidePanel,
-        Slider
+        Label,
+        TopPanel,
+        Separator,
+        Slider,
+        Window
     },
     input::{ Button, State as InputState },
     services::{ Camera, Frame, Input, World, Renderer },
@@ -14,27 +17,41 @@ use dotrix::{
 use std::f32::consts::PI;
 
 pub struct Editor {
-    pub octaves: usize,
-    pub frequency: f64,
-    pub lacunarity: f64,
-    pub persistence: f64,
-    pub chunk_size: usize,
-    pub xz_div: f64,
-    pub y_div: f64,
-    pub changed: bool,
+    pub terrain_size: usize,
+    pub terrain_size_changed: bool,
+    pub noise_octaves: usize,
+    pub noise_frequency: f64,
+    pub noise_lacunarity: f64,
+    pub noise_persistence: f64,
+    pub noise_scale: f64,
+    pub noise_amplitude: f64,
+    pub show_toolbox: bool,
+    pub brush_x: f32,
+    pub brush_y: f32,
+    pub brush_z: f32,
+    pub brush_radius: f32,
+    pub brush_add: bool,
+    pub brush_sub: bool,
 }
 
 impl Editor {
     pub fn new() -> Self {
         Self {
-            octaves: 6,
-            frequency: 1.0,
-            lacunarity: 2.0,
-            persistence: 0.5,
-            chunk_size: 64,
-            xz_div: 4.0,
-            y_div: 8.0,
-            changed: true,
+            terrain_size: 64,
+            terrain_size_changed: true,
+            noise_octaves: 3,
+            noise_frequency: 1.0,
+            noise_lacunarity: 2.0,
+            noise_persistence: 0.5,
+            noise_scale: 32.0,
+            noise_amplitude: 2.0,
+            show_toolbox: true,
+            brush_x: 0.0,
+            brush_y: 0.0,
+            brush_z: 0.0,
+            brush_radius: 4.0,
+            brush_add: false,
+            brush_sub: false,
         }
     }
 }
@@ -43,25 +60,56 @@ pub fn ui(mut editor: Mut<Editor>, renderer: Mut<Renderer>) {
     let egui = renderer.overlay_provider::<Egui>()
         .expect("Renderer does not contain an Overlay instance");
 
-    SidePanel::left("side_panel", 240.0).show(&egui.ctx, |ui| {
+    TopPanel::top("side_panel").show(&egui.ctx, |ui| {
+        ui.horizontal(|ui| {
+            if ui.button("🗋").clicked { println!("New"); }
+            if ui.button("🖴").clicked { println!("Save"); }
+            if ui.button("🗁").clicked { println!("Open"); }
+            if ui.button("🛠").clicked { editor.show_toolbox = !editor.show_toolbox; }
+            if ui.button("ℹ").clicked { println!("Info"); }
+        });
+    });
+
+    let mut show_toolbox = editor.show_toolbox;
+
+    Window::new("Toolbox").open(&mut show_toolbox).show(&egui.ctx, |ui| {
         CollapsingHeader::new("Terrain")
             .default_open(true)
             .show(ui, |ui| {
                 ui.vertical(|ui| {
-                    ui.add(Slider::usize(&mut editor.chunk_size, 8..=256).text("Size"));
-                    ui.add(Slider::f64(&mut editor.xz_div, 1.0..=256.0).text("XZ Divider"));
-                    ui.add(Slider::f64(&mut editor.y_div, 1.0..=256.0).text("Y Divider"));
-                    ui.add(Slider::usize(&mut editor.octaves, 1..=10).text("Octaves"));
-                    ui.add(Slider::f64(&mut editor.frequency, 0.1..=10.0).text("Frequency"));
-                    ui.add(Slider::f64(&mut editor.lacunarity, 0.1..=10.0).text("Lacunarity"));
-                    ui.add(Slider::f64(&mut editor.persistence, 0.1..=10.0).text("Persistence"));
+                    ui.horizontal(|ui| {
+                        ui.add(Label::new("Size:"));
+                        if ui.button("Resize").clicked { editor.terrain_size_changed = true; }
+                    });
+                    ui.add(Slider::usize(&mut editor.terrain_size, 8..=256).text("Meters"));
+
+                    ui.add(Separator::new());
+
+                    ui.horizontal(|ui| {
+                        ui.add(Label::new("Brush:"));
+                        if ui.button("Add").clicked { editor.brush_add = true; }
+                        if ui.button("Sub").clicked { editor.brush_sub = true; }
+                    });
+                    ui.add(Slider::f32(&mut editor.brush_x, -64.0..=64.0).text("X"));
+                    ui.add(Slider::f32(&mut editor.brush_y, -64.0..=64.0).text("Y"));
+                    ui.add(Slider::f32(&mut editor.brush_z, -64.0..=64.0).text("Z"));
+                    ui.add(Slider::f32(&mut editor.brush_radius, 1.0..=16.0).text("Radius"));
+
+                    ui.add(Separator::new());
+
+                    ui.add(Label::new("Noise:"));
+                    ui.add(Slider::f64(&mut editor.noise_scale, 1.0..=256.0).text("Scale"));
+                    ui.add(Slider::f64(&mut editor.noise_amplitude, 1.0..=256.0).text("Amplitude"));
+                    ui.add(Slider::usize(&mut editor.noise_octaves, 1..=10).text("Octaves"));
+                    ui.add(Slider::f64(&mut editor.noise_frequency, 0.1..=10.0).text("Frequency"));
+                    ui.add(Slider::f64(&mut editor.noise_lacunarity, 0.1..=10.0).text("Lacunarity"));
+                    ui.add(Slider::f64(&mut editor.noise_persistence, 0.1..=10.0).text("Persistence"));
                 });
-                if ui.button("Update").clicked {
-                    editor.changed = true;
-                }
             });
                 // ui.label(format!("Hello '{}', age {}", name, age));
     });
+
+    editor.show_toolbox = show_toolbox;
 }
 
 const ROTATE_SPEED: f32 = PI / 10.0;
