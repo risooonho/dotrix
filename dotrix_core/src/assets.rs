@@ -85,6 +85,14 @@ impl Assets {
         id
     }
 
+    /// stores new asset in the system under user defined name
+    pub fn add<T>(&mut self, asset: T) -> Id<T>
+    where Self: AssetMapGetter<T> {
+        let id = Id::new(self.next_id());
+        self.map_mut().insert(id, asset);
+        id
+    }
+
     /// Registers user defined name for an asset
     pub fn register<T>(&mut self, name: &str) -> Id<T>
     where Self: AssetMapGetter<T> {
@@ -107,6 +115,12 @@ impl Assets {
     pub fn get_mut<T>(&mut self, handle: Id<T>) -> Option<&mut T>
     where Self: AssetMapGetter<T> {
         self.map_mut().get_mut(&handle)
+    }
+
+    /// Remove asset by the handle
+    pub fn remove<T>(&mut self, handle: Id<T>) -> Option<T>
+    where Self: AssetMapGetter<T> {
+        self.map_mut().remove(&handle)
     }
 
     /// Returns an Id for an asset and increments the internal generator

@@ -352,7 +352,9 @@ pub fn world_renderer(
     // render static models
     let query = world.query::<(&mut Model,)>();
     for (model,) in query {
-        if model.disabled { continue; }
+        if model.disabled {
+            continue;
+        }
 
         if model.pipeline.is_null() {
             let pipelines = ctx.pipelines.as_ref().unwrap();

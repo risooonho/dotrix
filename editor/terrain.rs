@@ -84,7 +84,13 @@ impl Chunk {
     }
     */
 
-    fn update(&mut self, assets: &mut Assets, world: &mut World) {
+    fn update(
+        &mut self,
+        index: ChunkIndex,
+        unused_entities: usize,
+        assets: &mut Assets,
+        world: &mut World
+    ) {
         let mc = MarchingCubes {
             size: self.size as usize,
             height: self.size as usize,
@@ -114,7 +120,7 @@ impl Chunk {
             };
             mesh.calculate();
 
-            let mesh = assets.store(mesh, "Terrain");
+            let mesh = assets.add(mesh);
 
             let texture = assets.register("gray");
             assets.import("editor/assets/gray.png");
@@ -122,7 +128,12 @@ impl Chunk {
             let transform = Transform {
                 translate: Vec3::new(
                     self.position.x,
-                    if (self.position.x / self.size).abs() as usize % 2 == 0 && (self.position.z / self.size).abs() as usize % 2 != 0 { 5.0 } else { 0.0 },
+                    if (self.position.x / self.size).abs() as usize % 2 == 0
+                        && (self.position.z / self.size).abs() as usize % 2 != 0 {
+                            5.0
+                        } else {
+                            0.0
+                        },
                     self.position.z
                 ), // self.position.clone(),
                 ..Default::default()
@@ -130,12 +141,27 @@ impl Chunk {
 
             println!("Spawn tile @ {:?}", transform.translate);
 
-            world.spawn(Some(
-                (
-                    Model { mesh, texture, transform, ..Default::default() },
-                    ChunkIndex (self.index.0, self.index.1, self.index.2),
-                )
-            ));
+            if unused_entities == 0 {
+                world.spawn(Some(
+                    (
+                        Model { mesh, texture, transform, ..Default::default() },
+                        index,
+                    )
+                ));
+            } else {
+                let query = world.query::<(&mut Model, &mut ChunkIndex)>();
+                for (model, chunk_index) in query {
+                    if model.mesh.is_null() {
+                        model.mesh = mesh;
+                        model.transform = transform;
+                        model.disabled = false;
+                        chunk_index.0 = index.0;
+                        chunk_index.1 = index.1;
+                        chunk_index.2 = index.2;
+                        break;
+                    }
+                }
+            }
 
             self.mesh = Some(mesh);
         }
@@ -214,7 +240,7 @@ pub fn spawn(
     mut editor: Mut<Editor>,
     mut world: Mut<World>,
 ) {
-    const SQARE_DISTANCE_THRESHHOLD: f32 = 16.0;
+    const SQARE_DISTANCE_THRESHOLD: f32 = 16.0;
 
     let viewer_position = camera.target;
     let chunk_size = terrain.chunk_size; // TODO: add LOD support
@@ -225,19 +251,21 @@ pub fn spawn(
         let dx = viewer_position.x - last_viewer_position.x;
         let dy = viewer_position.y - last_viewer_position.y;
         let dz = viewer_position.z - last_viewer_position.z;
-        if dx * dx + dy * dy + dz * dz < SQARE_DISTANCE_THRESHHOLD { return; }
+        if dx * dx + dy * dy + dz * dz < SQARE_DISTANCE_THRESHOLD { return; }
     }
 
     terrain.last_viewer_position = Some(viewer_position);
 
-    // disable all chunks
+    // find what chunks has to be visible
+    let chunk_x = (viewer_position.x / chunk_size).floor();
+    let chunk_z = (viewer_position.z / chunk_size).floor();
+
+    // disable all remaining chunks
     for chunk in terrain.chunks.values_mut() {
         chunk.disabled = true;
     }
 
-    // find what chunks has to be visible
-    let chunk_x = (viewer_position.x / chunk_size).floor();
-    let chunk_z = (viewer_position.z / chunk_size).floor();
+    let mut unused_entities = terrain.unused_entities;
     println!("VP: {:?}, {}, {}", viewer_position, chunk_x, chunk_z);
     for x in -chunks_in_view_distance..chunks_in_view_distance {
         for z in -chunks_in_view_distance..chunks_in_view_distance {
@@ -249,27 +277,50 @@ pub fn spawn(
 
             // regenerate chunk if changed
             if chunk.changed {
-                chunk.update(&mut assets, &mut world);
+                chunk.update(chunk_index, unused_entities, &mut assets, &mut world);
+                if unused_entities > 0 {
+                    unused_entities -= 1;
+                }
             }
 
             chunk.disabled = false;
         }
     }
 
+    // clean up far away chunks
+    println!("chunks in list before cleanup: {}", terrain.chunks.len());
+    let chunks_in_view_distance_2x = (2 * chunks_in_view_distance).pow(2);
+    terrain.chunks.retain(|&index, _| {
+        let dx = (chunk_x as i32 - index.0);
+        let dz = (chunk_z as i32 - index.2);
+
+        let res = dx * dx + dz * dz < chunks_in_view_distance_2x;
+        if !res {
+            println!("dx {}, dz {} < {}", dx, dz, chunks_in_view_distance_2x);
+        }
+        res
+    });
+    println!("chunks in list after cleanup: {}", terrain.chunks.len());
+
     // hide disabled chunks
     let query = world.query::<(&mut Model, &ChunkIndex)>();
+    let mut unused_entities = 0;
     for (model, index) in query {
-        let disabled = terrain.chunks.get(index).map(|chunk| chunk.disabled).unwrap_or(true);
-
-        if model.disabled != disabled {
-            if disabled {
-                terrain.unused_entities += 1;
-            } else {
-                terrain.unused_entities -= 1;
-            }
-        }
-        model.disabled = disabled;
+        model.disabled = terrain.chunks.get(index)
+            .map(|chunk| chunk.disabled || model.mesh.is_null())
+            .unwrap_or_else(|| {
+                println!("Chunk not found: {:?}", index);
+                let mesh = model.mesh;
+                if !mesh.is_null() {
+                    // assets.remove(mesh);
+                }
+                model.mesh = Id::new(0);
+                unused_entities += 1;
+                true
+            });
     }
+    terrain.unused_entities = unused_entities;
+    println!("Unused: {}", terrain.unused_entities);
 }
 
 /*
