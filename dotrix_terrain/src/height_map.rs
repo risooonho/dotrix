@@ -2,60 +2,51 @@ use rand::Rng;
 use std::f32::consts::PI;
 use dotrix_core::assets::Texture;
 
-pub struct HeightMap {
-    size: usize,
-    heights: Vec<f32>,
+pub struct HeightMap<T> {
+    size_x: usize,
+    size_z: usize,
+    heights: Vec<Vec<T>>,
 }
 
-impl HeightMap {
+impl<T> HeightMap<T>
+where T: From<u8> + std::ops::Mul<Output = T> + Clone + Copy
+{
 
-    pub fn new(size: usize) -> Self {
-        let len = size * size;
-        let heights = vec![0.0; len];
+    pub fn new(size_x: usize, size_z: usize) -> Self {
+        let len = size_x * size_z;
+        let heights = vec![vec![0.into(); size_z]; size_x];
         Self {
-            size,
+            size_x,
+            size_z,
             heights,
         }
     }
 
-    pub fn from_texture(texture: &Texture, y_scale: f32) -> Self {
-        let size = if texture.width == texture.height {
-            texture.width as usize
-        } else {
-            panic!("Can't handle non-square heightmap");
-        };
+    pub fn from_texture(texture: &Texture, y_scale: T) -> Self {
+        let mut heightmap = Self::new(texture.width as usize, texture.height as usize);
 
-        let len = (texture.width * texture.height) as usize;
-        let mut heights = Vec::with_capacity(len);
-        let bytes_per_pixel = texture.data.len() / len;
-        for i in 0..len {
-            let offset = bytes_per_pixel * i;
-            let mut value = 0;
-            for b in 0..2 {
-                value |= texture.data[offset + b] << (8 * b);
+        let bytes_per_pixel = texture.data.len() / heightmap.size_x / heightmap.size_z;
+        for x in 0..heightmap.size_x {
+            let i = x * heightmap.size_z;
+            for z in 0..heightmap.size_z {
+                let offset = bytes_per_pixel * (i + z);
+                let mut value = 0;
+                for b in 0..2 {
+                    value |= texture.data[offset + b] << (8 * b);
+                }
+                heightmap.heights[x][z] = y_scale * value.into();
             }
-            let height = y_scale * value as f32;
-            heights.push(height);
         }
-        println!("HeightMap: bytes per pixel = {}, size = {}, heights = {}",
-            bytes_per_pixel, size, heights.len());
-
-        Self {
-            size,
-            heights,
-        }
+        heightmap
     }
 
-    pub fn size(&self) -> usize {
-        self.size
-    }
-
-    pub fn pick<T>(&self, x: T, z: T) -> f32
-    where Self: Picker<T>
+    pub fn pick<C>(&self, x: C, z: C) -> T
+    where Self: Picker<T, C>
     {
         self.pick_height(x, z)
     }
 
+    /*
     pub fn add_hill(&mut self, hill_radius: f32) {
         let mut rng = rand::thread_rng();
 
@@ -102,20 +93,11 @@ impl HeightMap {
         }
     }
 
-    pub fn generate(&mut self, hills: usize, max_radius: f32) {
-        let mut rng = rand::thread_rng();
-        for _ in 0..hills {
-            let hill_radius = rng.gen_range(1.0..max_radius);
-            self.add_hill(hill_radius);
-        }
-        self.normalize();
-    }
-
     pub fn normalize(&mut self) {
         let mut max = 0.0;
 
-        for x in 0..self.size {
-            for z in 0..self.size {
+        for x in 0..self.size_x {
+            for z in 0..self.size_z {
                 let height = self.pick(x, z);
                 if height > max {
                     max = height;
@@ -124,30 +106,35 @@ impl HeightMap {
         }
 
         if max > 0.0 {
-            for x in 0..self.size {
-                for z in 0..self.size {
-                    let index = z * self.size + x;
+            for x in 0..self.size_x {
+                for z in 0..self.size_z {
+                    let index = z * self.size_z + x;
                     let height = self.heights[index];
                     self.heights[index] = 50.0 * height / max;
                 }
             }
         }
     }
+    */
 }
 
-pub trait Picker<T> {
-    fn pick_height(&self, x: T, z: T) -> f32;
+pub trait Picker<T, C> {
+    fn pick_height(&self, x: C, z: C) -> T;
 }
 
-impl Picker<usize> for HeightMap {
-    fn pick_height(&self, x: usize, z: usize) -> f32 {
-        self.heights[z * self.size + x]
+impl<T> Picker<T, usize> for HeightMap<T>
+where T: Clone + Copy
+{
+    fn pick_height(&self, x: usize, z: usize) -> T {
+        self.heights[x][z]
     }
 }
 
-impl Picker<f32> for HeightMap {
-    fn pick_height(&self, x: f32, z: f32) -> f32
-    where Self: Picker<usize>
+impl<T> Picker<T, f32> for HeightMap<T>
+where T: Clone + Copy
+{
+    fn pick_height(&self, x: f32, z: f32) -> T
+    where Self: Picker<T, usize>
     {
         self.pick_height(z.floor() as usize, x.floor() as usize)
     }

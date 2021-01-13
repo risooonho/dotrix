@@ -26,7 +26,7 @@ impl Plain {
         }
     }
 
-    pub fn from_height_map(height_map: &HeightMap) -> Self {
+    pub fn from_height_map(height_map: &HeightMap<f32>) -> Self {
         let size = height_map.size() - 1;
         let mut positions = Vec::with_capacity(3 * 2 * size * size);
         for z in 0..size {

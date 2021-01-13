@@ -49,6 +49,7 @@ impl Voxel {
     }
 }
 
+
 /// Marching cubes implementation
 #[derive(Default)]
 pub struct MarchingCubes {
@@ -75,8 +76,8 @@ impl MarchingCubes {
     pub fn get_density_map<F>(&self, density: F) -> Vec<Vec<Vec<f32>>>
     where F: Fn(usize, usize, usize) -> f32 + Send + Sync 
     {
-        (0..self.height + 1).into_par_iter().map(|y|
-            (0..self.size + 1).into_par_iter().map(|x|
+        (0..self.height + 1).into_par_iter().map(|x|
+            (0..self.size + 1).into_par_iter().map(|y|
                 (0..self.size + 1).into_par_iter().map(|z|
                     density(x, y, z)
                 ).collect::<Vec<_>>()
@@ -113,14 +114,14 @@ impl MarchingCubes {
                     let y1 = y0 + 1;
                     let voxel = Voxel {
                         vertices: [
-                            Vertex::new([x0, y0, z0], density_map[y0][x0][z0]),
-                            Vertex::new([x1, y0, z0], density_map[y0][x1][z0]),
-                            Vertex::new([x1, y1, z0], density_map[y1][x1][z0]),
-                            Vertex::new([x0, y1, z0], density_map[y1][x0][z0]),
-                            Vertex::new([x0, y0, z1], density_map[y0][x0][z1]),
-                            Vertex::new([x1, y0, z1], density_map[y0][x1][z1]),
-                            Vertex::new([x1, y1, z1], density_map[y1][x1][z1]),
-                            Vertex::new([x0, y1, z1], density_map[y1][x0][z1]),
+                            Vertex::new([x0, y0, z0], density_map[x0][y0][z0]),
+                            Vertex::new([x1, y0, z0], density_map[x1][y0][z0]),
+                            Vertex::new([x1, y1, z0], density_map[x1][y1][z0]),
+                            Vertex::new([x0, y1, z0], density_map[x0][y1][z0]),
+                            Vertex::new([x0, y0, z1], density_map[x0][y0][z1]),
+                            Vertex::new([x1, y0, z1], density_map[x1][y0][z1]),
+                            Vertex::new([x1, y1, z1], density_map[x1][y1][z1]),
+                            Vertex::new([x0, y1, z1], density_map[x0][y1][z1]),
                         ]
                     };
                     let density_duration = now.elapsed().as_micros();

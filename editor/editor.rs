@@ -10,13 +10,22 @@ use dotrix::{
         Slider,
         Window
     },
-    input::{ Button, State as InputState },
+    input::{ Button, State as InputState, Mapper, KeyCode },
     services::{ Camera, Frame, Input, World, Renderer },
+    terrain::{ Density, HeightMap },
 };
 
+use crate::controls::Action;
+
+use noise::{ NoiseFn, Fbm, Perlin, Seedable, /* Perlin, Turbulence, Seedable, */ MultiFractal };
 use std::f32::consts::PI;
 
 pub struct Editor {
+    pub density: Density,
+    pub heightmap: Option<HeightMap<u8>>,
+    pub heightmap_size_x: usize,
+    pub heightmap_size_z: usize,
+    pub sea_level: u8,
     pub terrain_size: usize,
     pub terrain_size_changed: bool,
     pub noise_octaves: usize,
@@ -32,26 +41,58 @@ pub struct Editor {
     pub brush_radius: f32,
     pub brush_add: bool,
     pub brush_sub: bool,
+    pub brush_changed: bool,
+    pub apply_noise: bool,
 }
 
 impl Editor {
     pub fn new() -> Self {
+        let mut density = Density::new(2048, 64, 2048);
+
+        let noise_octaves = 3;
+        let noise_frequency = 1.0;
+        let noise_lacunarity = 2.0;
+        let noise_persistence = 0.5;
+        let noise_scale = 32.0;
+        let noise_amplitude: f64 = 2.0;
+
+        let noise = Fbm::new();
+        let noise = noise.set_octaves(noise_octaves);
+        let noise = noise.set_frequency(noise_frequency);
+        let noise = noise.set_lacunarity(noise_lacunarity);
+        let noise = noise.set_persistence(noise_persistence);
+
+        density.set(|x, y, z| {
+            let xf = x as f64 / noise_scale + 0.5;
+            let zf = z as f64 / noise_scale + 0.5;
+            let yf = y as f64;
+            let value = noise_amplitude.exp() * (noise.get([xf, zf]) - yf);
+            value as f32
+        });
+
         Self {
+            density,
+            heightmap: None,
+            heightmap_size_x: 2048,
+            heightmap_size_z: 2048,
+            sea_level: 0,
             terrain_size: 64,
             terrain_size_changed: true,
-            noise_octaves: 3,
-            noise_frequency: 1.0,
-            noise_lacunarity: 2.0,
-            noise_persistence: 0.5,
-            noise_scale: 32.0,
-            noise_amplitude: 2.0,
+            noise_octaves,
+            noise_frequency,
+            noise_lacunarity,
+            noise_persistence,
+            noise_scale,
+            noise_amplitude,
             show_toolbox: true,
             brush_x: 0.0,
-            brush_y: 0.0,
+            brush_y: 10.0,
             brush_z: 0.0,
-            brush_radius: 4.0,
+            brush_radius: 5.0,
             brush_add: false,
             brush_sub: false,
+            brush_changed: false,
+            apply_noise: true,
         }
     }
 }
@@ -73,6 +114,23 @@ pub fn ui(mut editor: Mut<Editor>, renderer: Mut<Renderer>) {
     let mut show_toolbox = editor.show_toolbox;
 
     Window::new("Toolbox").open(&mut show_toolbox).show(&egui.ctx, |ui| {
+        CollapsingHeader::new("Height Map").default_open(true).show(ui, |ui| {
+            ui.add(Label::new("Size by X axis"));
+            ui.add(Slider::usize(&mut editor.heightmap_size_x, 256..=8192).text("meters"));
+            ui.add(Label::new("Size by Z axis"));
+            ui.add(Slider::usize(&mut editor.heightmap_size_z, 256..=8192).text("meters"));
+            ui.horizontal(|ui| {
+                let apply_noise = editor.apply_noise;
+                if ui.button("Update").clicked {
+                    /* editor.heightmap = Some(if apply_noise {
+
+                    } else {
+                    }); */
+                }
+                ui.checkbox(&mut editor.apply_noise, "Apply noise");
+            });
+        });
+
         CollapsingHeader::new("Terrain")
             .default_open(true)
             .show(ui, |ui| {
@@ -90,6 +148,7 @@ pub fn ui(mut editor: Mut<Editor>, renderer: Mut<Renderer>) {
                         if ui.button("Add").clicked { editor.brush_add = true; }
                         if ui.button("Sub").clicked { editor.brush_sub = true; }
                     });
+
                     ui.add(Slider::f32(&mut editor.brush_x, -64.0..=64.0).text("X"));
                     ui.add(Slider::f32(&mut editor.brush_y, -64.0..=64.0).text("Y"));
                     ui.add(Slider::f32(&mut editor.brush_z, -64.0..=64.0).text("Z"));
@@ -114,11 +173,17 @@ pub fn ui(mut editor: Mut<Editor>, renderer: Mut<Renderer>) {
 
 const ROTATE_SPEED: f32 = PI / 10.0;
 const ZOOM_SPEED: f32 = 10.0;
+const MOVE_SPEED: f32 = 64.0;
 
-pub fn startup(mut renderer: Mut<Renderer>, mut world: Mut<World>) {
+pub fn startup(mut input: Mut<Input>, mut renderer: Mut<Renderer>, mut world: Mut<World>) {
     renderer.add_overlay(Box::new(Egui::default()));
 
     world.spawn(Some((Light::white([0.0, 500.0, 0.0]),)));
+
+    input.mapper_mut::<Mapper<Action>>()
+        .set(vec![
+            (Action::Move, Button::Key(KeyCode::W)),
+        ]);
 }
 
 pub fn camera_control(mut camera: Mut<Camera>, input: Const<Input>, frame: Const<Frame>) {
@@ -142,6 +207,23 @@ pub fn camera_control(mut camera: Mut<Camera>, input: Const<Input>, frame: Const
         } else {
             xz_angle
         };
+    }
+
+    // move
+    let distance = if input.is_action_hold(Action::Move) {
+        MOVE_SPEED * frame.delta().as_secs_f32()
+    } else {
+        0.0
+    };
+
+    if distance > 0.00001 {
+        let y_angle = camera.y_angle;
+
+        let dx = distance * y_angle.cos();
+        let dz = distance * y_angle.sin();
+
+        camera.target.x -= dx;
+        camera.target.z -= dz;
     }
 
     camera.set_view();
