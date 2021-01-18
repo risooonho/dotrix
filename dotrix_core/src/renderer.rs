@@ -212,7 +212,7 @@ impl Renderer {
     fn frustum(aspect_ratio: f32) -> Mat4 {
         let fov = Deg(70f32);
         let near_plane = 0.1;
-        let far_plane = 1000.0;
+        let far_plane = 2000.0;
 
         perspective(fov, aspect_ratio, near_plane, far_plane)
     }

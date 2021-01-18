@@ -1,5 +1,6 @@
 use dotrix::{
-    components::{ Light },
+    assets::{ Mesh },
+    components::{ Light, Model },
     ecs::{ Mut, Const },
     egui::{
         Egui,
@@ -10,8 +11,10 @@ use dotrix::{
         Slider,
         Window
     },
+    math::{Vec3i, Vec3},
+    renderer::{ Transform },
     input::{ Button, State as InputState, Mapper, KeyCode },
-    services::{ Camera, Frame, Input, World, Renderer },
+    services::{ Assets, Camera, Frame, Input, World, Renderer },
     terrain::{ Density, HeightMap },
 };
 
@@ -47,13 +50,13 @@ pub struct Editor {
 
 impl Editor {
     pub fn new() -> Self {
-        let mut density = Density::new(2048, 64, 2048);
+        let mut density = Density::new(2048, 64, 2048, Vec3i::new(1024, 0, 1024));
 
         let noise_octaves = 3;
-        let noise_frequency = 1.0;
-        let noise_lacunarity = 2.0;
+        let noise_frequency = 0.5;
+        let noise_lacunarity = 1.0;
         let noise_persistence = 0.5;
-        let noise_scale = 32.0;
+        let noise_scale = 4.0;
         let noise_amplitude: f64 = 2.0;
 
         let noise = Fbm::new();
@@ -66,7 +69,8 @@ impl Editor {
             let xf = x as f64 / noise_scale + 0.5;
             let zf = z as f64 / noise_scale + 0.5;
             let yf = y as f64;
-            let value = noise_amplitude.exp() * (noise.get([xf, zf]) - yf);
+            let n = 4.0 * (noise.get([xf, zf]) + 1.0);
+            let value = /* noise_amplitude.exp() **/ n - yf;
             value as f32
         });
 
@@ -175,7 +179,16 @@ const ROTATE_SPEED: f32 = PI / 10.0;
 const ZOOM_SPEED: f32 = 10.0;
 const MOVE_SPEED: f32 = 64.0;
 
-pub fn startup(mut input: Mut<Input>, mut renderer: Mut<Renderer>, mut world: Mut<World>) {
+pub struct Cursor(Vec3);
+
+pub fn startup(
+    mut assets: Mut<Assets>,
+    mut input: Mut<Input>,
+    mut renderer: Mut<Renderer>,
+    mut world: Mut<World>
+) {
+
+    assets.import("editor/assets/terrain.png");
     renderer.add_overlay(Box::new(Egui::default()));
 
     world.spawn(Some((Light::white([0.0, 500.0, 0.0]),)));
@@ -184,9 +197,30 @@ pub fn startup(mut input: Mut<Input>, mut renderer: Mut<Renderer>, mut world: Mu
         .set(vec![
             (Action::Move, Button::Key(KeyCode::W)),
         ]);
+
+    let cursor = assets.store(Mesh::cube());
+    assets.import("assets/green.png");
+    let texture = assets.register("green");
+    let transform = Transform {
+        translate: Vec3::new(0.0, 0.5, 0.0),
+        scale: Vec3::new(0.05, 0.05, 0.05),
+        ..Default::default()
+    };
+
+    world.spawn(
+        Some((
+            Model { mesh: cursor, texture, transform, ..Default::default() },
+            Cursor(Vec3::new(0.0, 0.0, 0.0))
+        ))
+    );
 }
 
-pub fn camera_control(mut camera: Mut<Camera>, input: Const<Input>, frame: Const<Frame>) {
+pub fn camera_control(
+    mut camera: Mut<Camera>,
+    input: Const<Input>,
+    frame: Const<Frame>,
+    mut world: Mut<World>,
+) {
     let time_delta = frame.delta().as_secs_f32();
     let mouse_delta = input.mouse_delta();
     let mouse_scroll = input.mouse_scroll();
@@ -224,6 +258,12 @@ pub fn camera_control(mut camera: Mut<Camera>, input: Const<Input>, frame: Const
 
         camera.target.x -= dx;
         camera.target.z -= dz;
+
+        let query = world.query::<(&mut Model, &Cursor)>();
+        for (model, _) in query {
+            model.transform.translate.x = camera.target.x;
+            model.transform.translate.z = camera.target.z;
+        }
     }
 
     camera.set_view();

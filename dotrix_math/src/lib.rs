@@ -13,6 +13,7 @@ pub type Mat4 = cgmath::Matrix4<f32>;
 pub type Point3 = cgmath::Point3<f32>;
 pub type Vec4 = cgmath::Vector4<f32>;
 pub type Vec3 = cgmath::Vector3<f32>;
+pub type Vec3i = cgmath::Vector3<i32>;
 pub type Vec2 = cgmath::Vector2<f32>;
 pub type Quat = cgmath::Quaternion<f32>;
 

@@ -27,7 +27,7 @@ fn main() {
         .with_system(System::from(terrain::spawn))
         .with_system(System::from(world_renderer).with(RunLevel::Render))
         .with_service(Assets::new())
-        .with_service(Terrain::new(128.0))
+        .with_service(Terrain::default())
         .with_service(Frame::new())
         .with_service(Editor::new())
         .with_service(MouseRay::default())

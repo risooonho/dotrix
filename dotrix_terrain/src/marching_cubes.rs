@@ -93,7 +93,7 @@ impl MarchingCubes {
     {
         let now = std::time::Instant::now();
         let density_map = self.get_density_map(density);
-        println!("Density map is ready in {} microsec", now.elapsed().as_micros());
+        // println!("Density map is ready in {} microsec", now.elapsed().as_micros());
 
         self.polygonize_map(&density_map)
     }
