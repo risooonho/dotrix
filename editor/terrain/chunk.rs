@@ -44,7 +44,7 @@ impl Chunk {
             height: Self::size() as usize,
             ..Default::default()
         };
-        let scale = 3_i32.pow(self.ring as u32);
+        let scale = 2_i32.pow(self.ring as u32);
 
         let (positions, _) = mc.polygonize(|x, y, z| {
             let xv = self.position.x + scale * x as i32;
@@ -53,13 +53,15 @@ impl Chunk {
 
             let density = density.value(xv, yv, zv) / scale as f32;
 
-            if self.ring == 2 {
-                println!("{}, {},{},{} -> {},{},{} -> {}", scale, x, y, z, xv, yv, zv, density);
-            }
             density
         });
 
         let len = positions.len();
+
+        if len == 0 {
+            self.hollow = true;
+            return;
+        }
         let uvs = Some(match self.ring {
             0 => vec![[0.0, 0.0]; len],
             1 => vec![[1.0, 0.0]; len],
@@ -86,7 +88,6 @@ impl Chunk {
             let mesh = assets.store(mesh);
 
             let texture = assets.register("terrain");
-            let scale = (3_u32).pow(self.ring as u32) as f32;
 
             let transform = Transform {
                 translate: Vec3::new(
@@ -94,7 +95,7 @@ impl Chunk {
                     self.position.y as f32,
                     self.position.z as f32,
                 ),
-                scale: Vec3::new(scale, scale, scale),
+                scale: Vec3::new(scale as f32, scale as f32, scale as f32),
                 ..Default::default()
             };
             let tile = self.tile();

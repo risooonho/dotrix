@@ -50,11 +50,7 @@ impl Density {
             let y = self.zero_at.y + y;
             let z = self.zero_at.z + z;
             if x > 0 && y > 0 && z > 0 && x < size_x && y < size_y && z < size_z {
-                let res = values[x as usize][y as usize][z as usize];
-                if res > 0.0 {
-                    println!("Density @ {}, {}, {} -> {}", x, y, z, res);
-                }
-                return res;
+                return values[x as usize][y as usize][z as usize];
             }
         }
         if y == 0 { 0.0 } else { -y as f32 }

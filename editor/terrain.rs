@@ -25,14 +25,12 @@ use chunk::*;
 
 const NUMBER_OF_RINGS: usize = 3;
 const IS_ODD_RING: bool = (NUMBER_OF_RINGS % 2 != 0);
-const CHUNKS_IN_RING: usize = 3;
 
 pub struct Terrain {
     pub rings: Vec<HashMap<Vec3i, Chunk>>,
     pub last_viewer_position: Option<Point3>,
     pub update_if_moved_by: f32,
-    pub density: Option<Density>,
-    pub zero_at: Vec3i,
+    pub view_distance: i32,
 }
 
 impl Terrain {
@@ -42,17 +40,9 @@ impl Terrain {
             rings: (0..NUMBER_OF_RINGS).map(|_| HashMap::new()).collect::<Vec<_>>(),
             update_if_moved_by: update_if_moved_by * update_if_moved_by,
             last_viewer_position: None,
-            density: None,
-            zero_at: Vec3i::new(0, 0 ,0),
+            view_distance: 1,
         }
     }
-
-    pub fn set_density(&mut self, density: Density, zero_at: Vec3i) {
-        self.density = Some(density);
-        self.zero_at = zero_at;
-    }
-
-
 }
 
 impl Default for Terrain {
@@ -80,7 +70,6 @@ pub fn spawn(
 
     terrain.last_viewer_position = Some(viewer_position);
 
-
     // disable all chunks
     for r in 0..NUMBER_OF_RINGS {
         for chunk in terrain.rings[r].values_mut() {
@@ -91,47 +80,67 @@ pub fn spawn(
     // calculate view range and level of details
     let chunk_size = Chunk::size();
     let number_of_rings = NUMBER_OF_RINGS;
-    let origin_x = (viewer_position.x / chunk_size as f32).floor() as i32;
-    let origin_z = (viewer_position.z / chunk_size as f32).floor() as i32;
-    // let from_x = origin_x - CHUNKS_IN_RING as i32 / 2;
-    // let from_z = origin_z - CHUNKS_IN_RING as i32 / 2;
-    // let to_x = origin_x + (CHUNKS_IN_RING as f32 / 2.0).ceil() as i32;
-    // let to_z = origin_z + (CHUNKS_IN_RING as f32 / 2.0).ceil() as i32;
-    let mut from_x = origin_x;
-    let mut from_z = origin_z;
+
+    let mut origin_from_x = (viewer_position.x / chunk_size as f32).floor() as i32 * chunk_size as i32;
+    let mut origin_from_y = (viewer_position.y / chunk_size as f32).floor() as i32 * chunk_size as i32;
+    let mut origin_from_z = (viewer_position.z / chunk_size as f32).floor() as i32 * chunk_size as i32;
+    let mut origin_to_x = origin_from_x;
+    let mut origin_to_y = origin_from_y;
+    let mut origin_to_z = origin_from_z;
 
     let now = std::time::Instant::now();
+    let mut chunks = 0;
     for r in 0..NUMBER_OF_RINGS {
-        let scale = CHUNKS_IN_RING.pow(r as u32) as i32;
-        from_x -= scale;
-        from_z -= scale;
-        let height = (CHUNKS_IN_RING as f32 / scale as f32).ceil() as i32;
-        println!("Ring #{}, scale {}, height {}", r, scale, height);
-        for x in 0..CHUNKS_IN_RING {
-            let xs = from_x + (x as i32 * scale);
+        let scale = (2_i32).pow(r as u32);
+        let chunk_size = Chunk::size() as i32 * scale;
+        let view_extent = terrain.view_distance * if r == 0 { 2 * chunk_size } else { chunk_size };
+        let from_x = origin_from_x - view_extent;
+        let to_x = origin_to_x + view_extent;
+        let from_y = origin_from_y - view_extent;
+        let to_y = origin_to_y + view_extent;
+        let from_z = origin_from_z - view_extent;
+        let to_z = origin_to_z + view_extent;
+
+        // println!("{} / {} / {}, X: {}..{}, Y: {}..{}, Z: {}..{}", r, chunk_size, view_extent, from_x, to_x, from_y, to_y, from_z, to_z,);
+
+        for x in (from_x..to_x).step_by(chunk_size as usize) {
             let y = 0;
-            for y in 0..height {
-                let ys = y * scale;
-                for z in 0..CHUNKS_IN_RING {
-                    let zs = from_z + (z as i32 * scale);
-                    if r != 0 && z == 1 && x == 1 {
-                        continue; 
+            for y in (from_y..to_y).step_by(chunk_size as usize) {
+                for z in (from_z..to_z).step_by(chunk_size as usize) {
+                    if r != 0 && x >= origin_from_x && x < origin_to_x
+                        && y >= origin_from_y && y < origin_to_y
+                        && z >= origin_from_z && z < origin_to_z
+                    {
+                        continue;
                     }
-                    let index = Vec3i::new(xs, ys, zs) * chunk_size as i32;
+
+                    let index = Vec3i::new(x, y, z);
+
+                    // println!(" {}: {:?}", r, index);
 
                     // get chunk
+                    // TODO: ring number here is a LOD, and instead of creating a chunk here,
+                    // we should get it or data for its creation from octree or some kind of 
+                    // similar storage
                     let chunk = terrain.rings[r].entry(index)
                         .or_insert(Chunk::new(index, r));
 
-                    if chunk.changed {
+                    if !chunk.hollow && chunk.changed {
                         chunk.polygonize(&mut assets, &mut world, &editor.density);
+                        chunks += 1;
                     }
 
                     chunk.disabled = false;
-                    println!("  ({:?})", index);
                 }
             }
         }
+        
+        origin_from_x = from_x;
+        origin_from_y = from_y;
+        origin_from_z = from_z;
+        origin_to_x = to_x;
+        origin_to_y = to_y;
+        origin_to_z = to_z;
     }
 
     let query = world.query::<(&mut Model, &Tile)>();
@@ -151,7 +160,7 @@ pub fn spawn(
                 true
             });
     }
-    println!("{} rings has been built in {}us", NUMBER_OF_RINGS, now.elapsed().as_micros());
+    println!("{} rings has been built in {}us, {} chunks", NUMBER_OF_RINGS, now.elapsed().as_micros(), chunks);
 }
 
 
