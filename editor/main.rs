@@ -1,6 +1,8 @@
 mod controls;
 mod editor;
+mod lod;
 mod mouse_ray;
+mod octree;
 mod terrain;
 
 use dotrix::{

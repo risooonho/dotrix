@@ -103,6 +103,7 @@ impl MarchingCubes {
         &self,
         density_map: &[Vec<Vec<f32>>]
     ) -> (Vec<[f32; 3]>, Option<Vec<u32>>) {
+        let half_size = self.size / 2;
 
         let positions = (0..self.size).into_par_iter().map(|x0| {
             let x1 = x0 + 1;

@@ -4,6 +4,7 @@ pub use cgmath::num_traits::clamp;
 pub use cgmath::perspective;
 pub use cgmath::VectorSpace;
 pub use cgmath::InnerSpace;
+pub use cgmath::MetricSpace;
 pub use cgmath::Rotation3;
 pub use cgmath::SquareMatrix;
 pub use cgmath::Rad;

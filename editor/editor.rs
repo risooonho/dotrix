@@ -46,6 +46,7 @@ pub struct Editor {
     pub brush_sub: bool,
     pub brush_changed: bool,
     pub apply_noise: bool,
+    pub lod: usize,
 }
 
 impl Editor {
@@ -97,7 +98,17 @@ impl Editor {
             brush_sub: false,
             brush_changed: false,
             apply_noise: true,
+            lod: 2,
         }
+    }
+
+    pub fn noise(&self) -> Fbm {
+        let noise = Fbm::new();
+        let noise = noise.set_octaves(self.noise_octaves);
+        let noise = noise.set_frequency(self.noise_frequency);
+        let noise = noise.set_lacunarity(self.noise_lacunarity);
+        let noise = noise.set_persistence(self.noise_persistence);
+        noise
     }
 }
 
@@ -118,6 +129,12 @@ pub fn ui(mut editor: Mut<Editor>, renderer: Mut<Renderer>) {
     let mut show_toolbox = editor.show_toolbox;
 
     Window::new("Toolbox").open(&mut show_toolbox).show(&egui.ctx, |ui| {
+
+        CollapsingHeader::new("View").default_open(true).show(ui, |ui| {
+            ui.add(Label::new("LOD"));
+            ui.add(Slider::usize(&mut editor.lod, 1..=16).text("level"));
+        });
+
         CollapsingHeader::new("Height Map").default_open(true).show(ui, |ui| {
             ui.add(Label::new("Size by X axis"));
             ui.add(Slider::usize(&mut editor.heightmap_size_x, 256..=8192).text("meters"));
